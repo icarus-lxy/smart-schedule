@@ -1,0 +1,75 @@
+name: Deploy & Build APK
+
+on:
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+jobs:
+  pages:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/configure-pages@v4
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: '.'
+      - uses: actions/deploy-pages@v4
+
+  apk:
+    needs: pages
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          packages: 'platforms;android-34 build-tools;34.0.0'
+
+      - name: Install Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install Capacitor
+        run: npm init -y && npm install @capacitor/core @capacitor/cli @capacitor/android
+
+      - name: Create Capacitor config
+        run: |
+          cat > capacitor.config.json << 'EOF'
+          {"appId":"com.schedule.app","appName":"智能课表","webDir":".","server":{"url":"https://icarus-lxy.github.io/smart-schedule","cleartext":true}}
+          EOF
+
+      - name: Add Android platform
+        run: npx cap add android
+
+      - name: Build APK
+        run: |
+          cd android
+          ./gradlew assembleRelease
+
+      - name: Sign APK
+        run: |
+          keytool -genkey -v -keystore release.keystore -alias schedule \
+            -keyalg RSA -keysize 2048 -validity 10000 \
+            -storepass android -keypass android \
+            -dname "CN=SmartSchedule, OU=App, O=User, L=Chengdu, S=Sichuan, C=CN"
+          apksigner sign --ks release.keystore --ks-pass pass:android \
+            android/app/build/outputs/apk/release/app-release-unsigned.apk
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: smart-schedule-apk
+          path: "android/app/build/outputs/apk/release/*.apk"
