@@ -1,0 +1,500 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>智能课表</title>
+<link rel="manifest" href="manifest.json">
+<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
+<link rel="icon" type="image/png" sizes="512x512" href="icon-512.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="智能课表">
+<meta name="theme-color" content="#3D3D4A">
+<script>if('serviceWorker' in navigator){navigator.serviceWorker.register('sw.js')}</script>
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:Inter,"PingFang SC","Noto Sans SC",sans-serif;background:#C5C9C7;display:flex;justify-content:center;align-items:center;min-height:100vh}
+.app{width:390px;height:844px;background:#F7F8FC;position:relative;overflow:hidden;border-radius:24px;box-shadow:0 20px 60px rgba(0,0,0,.15);display:flex;flex-direction:column}
+.statusbar{height:62px;background:#fff;display:flex;justify-content:space-between;align-items:center;padding:18px 21px 0;flex-shrink:0}
+.statusbar .time{font-size:15px;font-weight:600;color:#3D3D4A}
+.statusbar .right{display:flex;gap:4px;align-items:center}
+.statusbar .right span{width:16px;height:12px;background:#3D3D4A;border-radius:1px}
+.statusbar .right .bat{width:24px;border-radius:3px}
+.topheader{background:#fff;padding:12px 16px;display:flex;justify-content:space-between;align-items:center;flex-shrink:0}
+.header-left{display:flex;align-items:center;gap:10px}
+.menu-icon{width:24px;height:24px;display:flex;flex-direction:column;justify-content:center;gap:3px;cursor:pointer}
+.menu-icon span{display:block;height:1.5px;background:#3D3D4A;border-radius:1px}
+.menu-icon span:nth-child(2){width:10px}
+.week-info{display:flex;flex-direction:column;gap:2px}
+.week-title{display:flex;align-items:center;gap:4px;font-size:16px;font-weight:600;color:#3D7A63;cursor:pointer}
+.week-dot{width:6px;height:6px;background:#3D7A63;border-radius:50%}
+.week-arrow{font-size:10px}
+.semester{font-size:11px;color:#7A7A8A}
+.header-right{display:flex;gap:4px}
+.icon-btn{width:24px;height:24px;border-radius:6px;background:#F7F8FC;display:flex;align-items:center;justify-content:center;cursor:pointer;border:none;font-size:12px;color:#4A6D8A}
+.icon-btn.add{background:#3D3D4A;color:#fff;font-size:16px;font-weight:700}
+.week-header{background:#fff;height:36px;display:flex;align-items:stretch;flex-shrink:0}
+.week-header .spacer{width:40px;background:#fff}
+.week-header .day-col{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;cursor:pointer}
+.week-header .day-col .dname{font-size:10px;font-weight:500;color:#7A7A8A}
+.week-header .day-col .ddate{font-size:12px;font-weight:600;color:#3D3D4A}
+.week-header .day-col.active{background:#3D3D4A}
+.week-header .day-col.active .dname,.week-header .day-col.active .ddate{color:#fff}
+.timegrid{flex:1;background:#fff;position:relative;overflow-y:auto;overflow-x:hidden}
+.grid-inner{position:relative;min-height:650px}
+.time-labels{position:absolute;left:0;top:0;width:40px;z-index:2}
+.time-label{height:65px;display:flex;flex-direction:column;justify-content:flex-start;padding:4px 0;position:relative}
+.time-label .ptime-start{font-size:10px;font-weight:600;color:#3D3D4A;text-align:center}
+.time-label .ptime-end{font-size:10px;font-weight:500;color:#7A7A8A;text-align:center}
+.time-label .ptime-start.top{position:absolute;top:3px;left:0;right:0}
+.time-label .ptime-end.bottom{position:absolute;bottom:3px;left:0;right:0}
+.grid-area{position:absolute;left:40px;top:0;right:0;bottom:0}
+.sep-h{position:absolute;left:0;right:0;height:1px;background:#EBEEF5}
+.sep-v{position:absolute;top:5px;bottom:5px;width:1px;background:#EBEEF5}
+.now-line{position:absolute;left:0;right:0;height:2px;background:#4A6D8A;z-index:3}
+.now-dot{position:absolute;left:-4px;top:-3px;width:8px;height:8px;background:#4A6D8A;border-radius:50%;z-index:3}
+.course-block{position:absolute;border-radius:6px;display:flex;flex-direction:column;padding:4px;gap:2px;cursor:pointer;overflow:hidden;transition:all .3s;z-index:2;font-size:10px;width:47px}
+.course-block .cname{font-weight:600;font-size:10px;line-height:1.2;word-break:break-all;pointer-events:none}
+.course-block .cloc{font-size:8px;line-height:1.2;pointer-events:none}
+.course-block:hover{filter:brightness(0.93)}
+.course-block.shattered{opacity:.45;border:1px dashed #AAA !important;box-shadow:none}
+.course-block.shattered::after{content:'';position:absolute;inset:0;background:repeating-linear-gradient(45deg,transparent,transparent 3px,rgba(0,0,0,.08) 3px,rgba(0,0,0,.08) 6px);pointer-events:none}
+.empty-slot{position:absolute;width:47px;height:63px;border-radius:6px;border:1px dashed #CCC;background:#F9F9F9;display:flex;align-items:center;justify-content:center;cursor:pointer;transition:.2s;z-index:1}
+.empty-slot:hover{background:#EFEFEF}
+.back-today{position:absolute;bottom:80px;right:16px;height:36px;background:#3D3D4A;color:#fff;border:none;border-radius:18px;padding:0 14px;font-size:12px;font-weight:600;display:flex;align-items:center;gap:6px;cursor:pointer;box-shadow:0 4px 12px rgba(0,0,0,.2);z-index:10}
+.tabbar{height:70px;background:#fff;display:flex;align-items:center;justify-content:center;padding:10px;border-top:1px solid #EBEEF5;flex-shrink:0}
+.tab-item{flex:1;height:50px;border-radius:16px;display:flex;align-items:center;justify-content:center;gap:6px;cursor:pointer;transition:.2s}
+.tab-item.active{background:#EBF2EF}
+.tab-item .tlabel{font-size:13px;color:#7A7A8A}
+.tab-item.active .tlabel{font-weight:600;color:#3D7A63}
+.modal-overlay{position:absolute;inset:0;background:rgba(0,0,0,.4);z-index:100;display:flex;align-items:center;justify-content:center;opacity:0;pointer-events:none;transition:opacity .25s}
+.modal-overlay.show{opacity:1;pointer-events:auto}
+.modal-card{width:320px;max-height:80vh;background:#fff;border-radius:20px;padding:20px;display:flex;flex-direction:column;gap:14px;overflow-y:auto}
+.modal-header{display:flex;justify-content:space-between;align-items:center}
+.modal-header .m-title{font-size:18px;font-weight:600;color:#3D3D4A}
+.modal-close{width:28px;height:28px;border-radius:14px;background:#F7F8FC;border:none;cursor:pointer;font-size:14px;color:#7A7A8A}
+.modal-meta{display:flex;flex-direction:column;gap:6px}
+.modal-meta .mrow{display:flex;align-items:center;gap:8px;font-size:13px;color:#7A7A8A}
+.modal-divider{height:1px;background:#EBEEF5}
+.color-label{font-size:12px;font-weight:600;color:#7A7A8A;letter-spacing:.8px}
+.color-row{display:flex;gap:10px}
+.color-dot{width:28px;height:28px;border-radius:14px;cursor:pointer;border:2px solid transparent;transition:.2s}
+.color-dot.selected{border-color:#3D3D4A;transform:scale(1.15)}
+.action-row{display:flex;gap:10px}
+.action-btn{flex:1;height:42px;border-radius:12px;border:none;font-size:13px;font-weight:600;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px;transition:.2s}
+.action-btn.shatter{background:#EBF2EF;color:#4A6D8A}
+.action-btn.restore{background:#EBF2EF;color:#3D7A63}
+.action-btn:hover{filter:brightness(0.95)}
+.add-card{width:300px;background:#fff;border-radius:20px;padding:20px;display:flex;flex-direction:column;gap:12px}
+.add-card input,.add-card select{width:100%;height:40px;border:1px solid #EBEEF5;border-radius:10px;padding:0 12px;font-size:14px;outline:none;font-family:inherit;background:#fff}
+.add-card input:focus,.add-card select:focus{border-color:#4A6D8A}
+.add-card .add-confirm{width:100%;height:40px;background:#3D3D4A;color:#fff;border:none;border-radius:12px;font-size:14px;font-weight:600;cursor:pointer}
+.add-card .form-row{display:flex;gap:8px;align-items:center}
+.add-card .form-row label{font-size:13px;color:#7A7A8A;white-space:nowrap;min-width:50px}
+.add-card textarea{width:100%;height:160px;border:1px solid #EBEEF5;border-radius:10px;padding:10px;font-size:12px;outline:none;font-family:monospace;resize:vertical}
+.add-card textarea:focus{border-color:#4A6D8A}
+.add-card .hint{font-size:11px;color:#999;line-height:1.5}
+.tag{display:inline-block;padding:4px 10px;border-radius:20px;font-size:11px;background:#EBF2EF;color:#3D7A63;cursor:pointer;margin:2px}
+.tag.blue{background:#E8EEF5;color:#4A6D8A}
+.settings-page{position:absolute;top:0;left:0;right:0;bottom:70px;background:#F7F8FC;transform:translateX(100%);transition:transform .3s;display:flex;flex-direction:column;z-index:50}
+.settings-page.show{transform:translateX(0)}
+.settings-content{flex:1;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:20px}
+.set-section-title{font-size:12px;font-weight:600;color:#7A7A8A;letter-spacing:1px}
+.set-section{background:#fff;border-radius:16px;overflow:hidden}
+.set-row{display:flex;align-items:center;padding:14px;gap:12px;cursor:pointer}
+.set-row:not(:last-child){border-bottom:1px solid #EBEEF5}
+.set-row-icon{width:32px;height:32px;border-radius:8px;background:#E0E4E2;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.set-row-text{flex:1;display:flex;flex-direction:column;gap:2px}
+.set-row-text .sr-title{font-size:14px;font-weight:600;color:#3D3D4A}
+.set-row-text .sr-desc{font-size:11px;color:#7A7A8A}
+.set-row-arrow{color:#7A7A8A;font-size:16px}
+.toggle-sw{width:38px;height:22px;border-radius:11px;background:#4A6D8A;position:relative;cursor:pointer;border:none;flex-shrink:0}
+.toggle-sw .knob{width:18px;height:18px;border-radius:9px;background:#fff;position:absolute;right:2px;top:2px;transition:.2s}
+.toggle-sw.off{background:#CCC}
+.toggle-sw.off .knob{right:18px}
+.set-header{height:56px;background:#fff;display:flex;align-items:center;padding:0 16px;font-size:18px;font-weight:600;color:#3D3D4A;flex-shrink:0}
+.sr-value{color:#7A7A8A;font-size:13px}
+.week-dropdown{position:absolute;top:130px;left:60px;background:#fff;border-radius:14px;box-shadow:0 8px 30px rgba(0,0,0,.18);z-index:90;display:none;padding:12px;max-width:280px}
+.week-dropdown.show{display:block}
+.week-dropdown .wk-grid{display:grid;grid-template-columns:repeat(8,1fr);gap:6px}
+.week-dropdown .wk-btn{width:28px;height:28px;border-radius:8px;border:none;background:#F7F8FC;cursor:pointer;font-size:11px;font-weight:600;color:#3D3D4A;transition:.15s}
+.week-dropdown .wk-btn:hover{background:#EBF2EF;color:#3D7A63}
+.week-dropdown .wk-btn.current{background:#3D7A63;color:#fff}
+.week-dropdown .wk-label{font-size:11px;color:#7A7A8A;text-align:center;padding:4px 0;grid-column:1/-1}
+.week-nav{display:flex;align-items:center;gap:2px}
+.week-nav-btn{width:22px;height:22px;border-radius:6px;border:none;background:transparent;cursor:pointer;font-size:12px;color:#3D7A63;display:flex;align-items:center;justify-content:center}
+.week-nav-btn:hover{background:#EBF2EF}
+#weekNum{cursor:pointer;min-width:48px;text-align:center}
+#weekNum:hover{text-decoration:underline}
+</style>
+</head>
+<body>
+<div class="app" id="app">
+
+  <!-- ========== SCHEDULE PAGE ========== -->
+  <div id="schedulePage" style="flex:1;display:flex;flex-direction:column;overflow:hidden">
+    <div class="topheader">
+      <div class="header-left">
+        <div class="menu-icon"><span></span><span></span><span></span></div>
+        <div class="week-info">
+          <div class="week-title">
+            <span class="week-dot"></span>
+            <span class="week-nav">
+              <button class="week-nav-btn" onclick="changeWeek(-1)" title="上一周">◀</button>
+              <span id="weekNum" onclick="toggleWeekPicker()">12</span>
+              <button class="week-nav-btn" onclick="changeWeek(1)" title="下一周">▶</button>
+            </span>
+          </div>
+          <span class="semester">2025-2026 第2学期</span>
+        </div>
+      </div>
+      <div class="header-right">
+        <button class="icon-btn" onclick="addRandomCourse()" title="添加随机课程">⊞</button>
+        <button class="icon-btn add" onclick="showAddEventPrompt()" title="添加">+</button>
+      </div>
+    </div>
+    <div class="week-header" id="weekHeader"></div>
+    <div class="week-dropdown" id="weekPicker"><div class="wk-label">选择周次</div><div class="wk-grid" id="weekGrid"></div></div>
+    <div class="timegrid" id="timeGrid"><div class="grid-inner" id="gridInner"></div><button class="back-today" onclick="scrollToNow()">切回本周</button></div>
+  </div>
+
+  <!-- ========== SETTINGS PAGE ========== -->
+  <div class="settings-page" id="settingsPage">
+    <div class="set-header">设置</div>
+    <div class="settings-content">
+      <div class="set-section-title">课表管理</div>
+      <div class="set-section">
+        <div class="set-row" onclick="openImportModal()">
+          <div class="set-row-icon"><svg width="18" height="18" viewBox="0 0 18 18" fill="none"><path d="M3 3h4l2 2h6c.55 0 1 .45 1 1v7c0 .55-.45 1-1 1H3c-.55 0-1-.45-1-1V4c0-.55.45-1 1-1Z" stroke="#3D7A63" stroke-width="1.5" stroke-linejoin="round"/><path d="M9 10.5l1.5-1.5M10.5 9 12 7.5m-1.5 1.5v3.5" stroke="#3D7A63" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+          <div class="set-row-text"><span class="sr-title">课表导入</span><span class="sr-desc">手动添加 / 批量导入课程</span></div><span class="set-row-arrow">›</span>
+        </div>
+        <div class="set-row" onclick="openQuickAddCourse()">
+          <div class="set-row-icon"><svg width="18" height="18" viewBox="0 0 18 18" fill="none"><circle cx="9" cy="9" r="7" stroke="#4A6D8A" stroke-width="1.5"/><path d="M9 5.5v7M5.5 9h7" stroke="#4A6D8A" stroke-width="1.5" stroke-linecap="round"/></svg></div>
+          <div class="set-row-text"><span class="sr-title">快速添加课程</span><span class="sr-desc">逐门添加课程信息</span></div><span class="set-row-arrow">›</span>
+        </div>
+        <div class="set-row" onclick="resetAllCourses()">
+          <div class="set-row-icon"><svg width="18" height="18" viewBox="0 0 18 18" fill="none"><path d="M3 3a2 2 0 0 1 2-2h4l3 3v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V3Z" stroke="#4A6D8A" stroke-width="1.5"/><path d="M6 1v3h6" stroke="#4A6D8A" stroke-width="1.5" stroke-linecap="round"/></svg></div>
+          <div class="set-row-text"><span class="sr-title">重置课表</span><span class="sr-desc">恢复默认示例课表</span></div><span class="set-row-arrow">›</span>
+        </div>
+        <div class="set-row"><div class="set-row-icon"><svg width="18" height="18" viewBox="0 0 18 18" fill="none"><rect x="2.5" y="3.5" width="13" height="11" rx="1.5" stroke="#4A6D8A" stroke-width="1.5"/><path d="M2.5 7h13M6 1v3m6-3v3" stroke="#4A6D8A" stroke-width="1.5" stroke-linecap="round"/></svg></div><div class="set-row-text"><span class="sr-title">自定义事件</span><span class="sr-desc">已添加 <span id="customCount">0</span> 个</span></div><span class="set-row-arrow">›</span></div>
+      </div>
+      <div class="set-section-title">通知与提醒</div>
+      <div class="set-section">
+        <div class="set-row"><div class="set-row-icon"><svg width="18" height="18" viewBox="0 0 18 18" fill="none"><path d="M4.5 12V7.5a5 5 0 1 1 10 0V12h-10Zm-2 0h13" stroke="#4A6D8A" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"/><path d="M7.5 15.5a1 1 0 1 0 3 0" stroke="#4A6D8A" stroke-width="1.5" stroke-linecap="round"/></svg></div><div class="set-row-text"><span class="sr-title">课前提醒</span><span class="sr-desc">上课前 10 分钟通知</span></div><button class="toggle-sw" onclick="this.classList.toggle('off')"><span class="knob"></span></button></div>
+      </div>
+      <div class="set-section-title">关于</div>
+      <div class="set-section">
+        <div class="set-row" style="justify-content:space-between"><span style="font-size:14px;color:#3D3D4A">版本</span><span class="sr-value">v1.0.0</span></div>
+        <div class="set-row" onclick="alert('📧 请通过开发者邮箱反馈')"><div class="set-row-icon"><svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M2 3.5C2 2.67 2.67 2 3.5 2h9c.83 0 1.5.67 1.5 1.5v6c0 .83-.67 1.5-1.5 1.5H7l-3 2.5V11H3.5C2.67 11 2 10.33 2 9.5v-6Z" stroke="#4A6D8A" stroke-width="1.3" stroke-linejoin="round"/></svg></div><div class="set-row-text"><span class="sr-title">反馈与建议</span></div><span class="set-row-arrow">›</span></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ========== SHARED TAB BAR (always fixed at bottom) ========== -->
+  <div class="tabbar" style="flex-shrink:0">
+    <div class="tab-item active" id="tabSchedule" onclick="showSettings(false)">
+      <svg width="18" height="18" viewBox="0 0 18 18" fill="none"><rect x=".5" y="2.5" width="17" height="14" rx="2" stroke="#3D7A63" stroke-width="1.5"/><path d="M.5 6.5h17M5 .5v4m8-4v4" stroke="#3D7A63" stroke-width="1.5" stroke-linecap="round"/><circle cx="9" cy="11" r="1.5" fill="#3D7A63"/></svg>
+      <span class="tlabel">课表</span><span id="courseCount" style="font-size:9px;color:#999;margin-left:2px"></span>
+    </div>
+    <div class="tab-item" id="tabSettings" onclick="showSettings(true)">
+      <svg width="18" height="18" viewBox="0 0 18 18" fill="none"><circle cx="9" cy="9" r="2.2" stroke="#7A7A8A" stroke-width="1.5"/><path d="M9 1v2m0 12v2m8-8h-2M3 9H1m13.95-5.95L13.54 4.46M4.46 13.54l-1.41 1.41m11.9 0-1.41-1.41M4.46 4.46 3.05 3.05" stroke="#7A7A8A" stroke-width="1.5" stroke-linecap="round"/></svg>
+      <span class="tlabel">设置</span>
+    </div>
+  </div>
+
+  <!-- ========== COURSE DETAIL MODAL ========== -->
+  <div class="modal-overlay" id="courseModal" onclick="closeModal(event)">
+    <div class="modal-card" onclick="event.stopPropagation()">
+      <div class="modal-header"><span class="m-title" id="modalTitle">课程详情</span><button class="modal-close" onclick="closeModalDirect()">✕</button></div>
+      <div class="modal-meta"><div class="mrow"><span>🕐</span><span id="modalTime">-</span></div><div class="mrow"><span>📍</span><span id="modalLoc">-</span></div></div>
+      <div class="modal-divider"></div><div class="color-label">课程颜色</div><div class="color-row" id="colorRow"></div>
+      <div class="modal-divider"></div><div class="action-row" id="actionRow"></div>
+    </div>
+  </div>
+
+  <!-- ========== ADD EVENT MODAL ========== -->
+  <div class="modal-overlay" id="addEventModal" onclick="closeAddModal(event)">
+    <div class="add-card" onclick="event.stopPropagation()">
+      <div style="font-size:16px;font-weight:600;color:#3D3D4A">添加自定义事件</div>
+      <div style="font-size:12px;color:#7A7A8A" id="addEventInfo">-</div>
+      <input type="text" id="addEventName" placeholder="事件名称（必填）"><input type="text" id="addEventLoc" placeholder="地点（可选）">
+      <button class="add-confirm" onclick="confirmAddEvent()">确认添加</button>
+    </div>
+  </div>
+
+  <!-- ========== QUICK ADD COURSE MODAL ========== -->
+  <div class="modal-overlay" id="quickAddCourseModal" onclick="closeQuickAdd(event)">
+    <div class="add-card" onclick="event.stopPropagation()">
+      <div style="font-size:16px;font-weight:600;color:#3D3D4A">快速添加课程</div>
+      <input type="text" id="qcName" placeholder="课程名称（必填）">
+      <div class="form-row"><label>星期</label><select id="qcDay"><option value="0">周一</option><option value="1">周二</option><option value="2">周三</option><option value="3">周四</option><option value="4">周五</option><option value="5">周六</option><option value="6">周日</option></select></div>
+      <div class="form-row"><label>起始节</label><select id="qcFrom"><option value="1">第1节 08:10</option><option value="2">第2节 09:05</option><option value="3">第3节 10:10</option><option value="4">第4节 11:05</option><option value="5">第5节 14:20</option><option value="6">第6节 15:15</option><option value="7">第7节 16:20</option><option value="8">第8节 17:15</option><option value="9">第9节 19:30</option></select></div>
+      <div class="form-row"><label>结束节</label><select id="qcTo"><option value="1">第1节 08:10</option><option value="2">第2节 09:05</option><option value="3">第3节 10:10</option><option value="4">第4节 11:05</option><option value="5">第5节 14:20</option><option value="6">第6节 15:15</option><option value="7">第7节 16:20</option><option value="8">第8节 17:15</option><option value="9" selected>第9节 19:30</option></select></div>
+      <input type="text" id="qcLoc" placeholder="地点（如 A教301）"><input type="text" id="qcCampus" placeholder="校区（可选）" value="雅安校区">
+      <button class="add-confirm" onclick="confirmQuickAdd()">确认添加</button>
+    </div>
+  </div>
+
+  <!-- ========== IMPORT MODAL ========== -->
+  <div class="modal-overlay" id="importModal" onclick="closeImport(event)">
+    <div class="modal-card" onclick="event.stopPropagation()">
+      <div class="modal-header"><span class="m-title">课表导入</span><button class="modal-close" onclick="closeImportDirect()">✕</button></div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:4px">
+        <span class="tag" style="font-weight:600">📝 批量粘贴</span>
+        <span class="tag blue" onclick="fillDemoImport()">📋 填入示例</span>
+        <span class="tag" onclick="document.getElementById('imgInput').click()">📷 上传图片</span>
+      </div>
+      <input type="file" id="imgInput" accept="image/*" style="display:none" onchange="handleImageUpload(event)">
+      <div id="ocrStatus" style="display:none;padding:8px;background:#EBF2EF;border-radius:8px;font-size:12px;color:#3D7A63;text-align:center"></div>
+      <div id="ocrPreview" style="display:none"></div>
+      <textarea id="importText" placeholder="每行一门课，格式：课程名, 星期(1-7), 起始节, 结束节, 地点, 校区&#10;比如：&#10;大学英语, 2, 3, 4, B教205, 雅安校区&#10;高等数学, 1, 1, 2, A教301"></textarea>
+      <div class="hint">格式：<b>课程名, 星期(1-7), 起始节, 结束节, 地点, 校区</b><br>星期：1=周一 ... 7=周日 &nbsp; 校区可省略</div>
+      <button class="add-confirm" onclick="confirmImport()">导入课程</button>
+    </div>
+  </div>
+
+</div>
+
+<script>
+(function(){
+const DAYS=['一','二','三','四','五','六','日'];
+const PERIODS=[{n:1,t:'08:10',e:'08:55'},{n:2,t:'09:05',e:'09:50'},{n:3,t:'10:10',e:'10:55'},{n:4,t:'11:05',e:'11:50'},{n:5,t:'14:20',e:'15:05'},{n:6,t:'15:15',e:'16:00'},{n:7,t:'16:20',e:'17:05'},{n:8,t:'17:15',e:'18:00'},{n:9,t:'19:30',e:'20:05'},{n:10,t:'20:15',e:'21:10'}];
+const PERIOD_H=65, COL_X=[2,52,102,152,202,252,302];
+// Lighter color palette
+const COLORS=['#C8C8C8','#5BB5A0','#6688B8','#4A8A6E'];
+const COLOR_NAMES=['默认灰','青色','蓝色','墨绿'];
+
+const DEFAULT_COURSES=[
+  // ========== 周一 day=0 ==========
+  {id:1,name:'遗传学',day:0,from:5,to:6,loc:'10-A303',campus:'雅安',colorIdx:3,wkStart:1,wkEnd:14,oddOnly:false,evenOnly:true},
+  {id:2,name:'发酵工程原理',day:0,from:7,to:8,loc:'10-A303',campus:'雅安',colorIdx:1,wkStart:1,wkEnd:14,oddOnly:true,evenOnly:false},
+  {id:3,name:'分子生物学A',day:0,from:9,to:10,loc:'10-A417',campus:'雅安',colorIdx:2,wkStart:1,wkEnd:16,oddOnly:true,evenOnly:false},
+  // ========== 周二 day=1 ==========
+  {id:4,name:'遗传学实验',day:1,from:1,to:4,loc:'12-203',campus:'雅安',colorIdx:1,wkStart:3,wkEnd:8,oddOnly:false,evenOnly:false},
+  {id:5,name:'免疫分析技术',day:1,from:5,to:6,loc:'10-A208',campus:'雅安',colorIdx:2,wkStart:1,wkEnd:8,oddOnly:false,evenOnly:false},
+  {id:6,name:'大学生就业指导',day:1,from:5,to:6,loc:'10-A208',campus:'雅安',colorIdx:3,wkStart:9,wkEnd:12,oddOnly:false,evenOnly:false},
+  // ========== 周三 day=2 ==========
+  {id:8,name:'天然产物分离技术',day:2,from:1,to:2,loc:'10-A301',campus:'雅安',colorIdx:1,wkStart:1,wkEnd:12,oddOnly:false,evenOnly:false},
+  {id:9,name:'形势与政策V',day:2,from:3,to:4,loc:'10-A103',campus:'雅安',colorIdx:3,wkStart:10,wkEnd:13,oddOnly:false,evenOnly:false},
+  {id:10,name:'细胞工程实验',day:2,from:7,to:8,loc:'12-405',campus:'雅安',colorIdx:2,wkStart:10,wkEnd:15,oddOnly:false,evenOnly:false},
+  {id:11,name:'分子生物学A',day:2,from:9,to:10,loc:'10-A417',campus:'雅安',colorIdx:2,wkStart:1,wkEnd:16,oddOnly:true,evenOnly:false},
+  // ========== 周四 day=3 ==========
+  {id:12,name:'遗传学',day:3,from:3,to:4,loc:'10-A209',campus:'雅安',colorIdx:3,wkStart:1,wkEnd:14,oddOnly:false,evenOnly:true},
+  {id:13,name:'细胞工程',day:3,from:5,to:6,loc:'10-A421',campus:'雅安',colorIdx:1,wkStart:1,wkEnd:14,oddOnly:true,evenOnly:false},
+  {id:14,name:'发酵工程原理',day:3,from:7,to:8,loc:'10-A208',campus:'雅安',colorIdx:1,wkStart:1,wkEnd:14,oddOnly:true,evenOnly:false},
+  // ========== 周五 day=4 ==========
+  {id:15,name:'基础生态学',day:4,from:1,to:2,loc:'12-203',campus:'雅安',colorIdx:3,wkStart:1,wkEnd:16,oddOnly:false,evenOnly:false},
+  {id:16,name:'天然产物分离技术',day:4,from:1,to:4,loc:'12-315',campus:'雅安',colorIdx:1,wkStart:8,wkEnd:11,oddOnly:false,evenOnly:false},
+  {id:17,name:'免疫分析技术',day:4,from:3,to:4,loc:'12-405',campus:'雅安',colorIdx:2,wkStart:3,wkEnd:6,oddOnly:false,evenOnly:false},
+  {id:18,name:'细胞工程',day:4,from:5,to:6,loc:'10-A103',campus:'雅安',colorIdx:1,wkStart:1,wkEnd:14,oddOnly:false,evenOnly:false},
+  // ========== 周六 day=5 ==========
+  {id:19,name:'发酵工程原理',day:5,from:1,to:4,loc:'12-603',campus:'雅安',colorIdx:1,wkStart:13,wkEnd:16,oddOnly:false,evenOnly:false},
+  {id:20,name:'分子生物学实验A',day:5,from:1,to:4,loc:'12-607',campus:'雅安',colorIdx:2,wkStart:10,wkEnd:12,oddOnly:false,evenOnly:false}
+], WEEK_TOTAL=16;
+
+let courses=JSON.parse(JSON.stringify(DEFAULT_COURSES));
+let customEvents=[];
+let activeDay=new Date().getDay()-1;if(activeDay<0)activeDay=6;
+// 计算当前周次（基于周次起始日 2026-05-18）
+const CURRENT_WEEK=(Math.floor((new Date()-new Date(2026,4,18))/(7*24*3600*1000))+1);
+let activeWeek=Math.max(1,Math.min(WEEK_TOTAL,CURRENT_WEEK));
+let currentCourse=null,nextId=100,addDay=0,addPer=0;
+
+// ===== WEEK SWITCHER =====
+function isWeekActive(c,w){
+  if(c.wkStart!==undefined&&w<c.wkStart)return false;
+  if(c.wkEnd!==undefined&&w>c.wkEnd)return false;
+  if(c.oddOnly&&w%2===0)return false;
+  if(c.evenOnly&&w%2===1)return false;
+  return true;
+}
+window.changeWeek=function(delta){
+  activeWeek+=delta;
+  if(activeWeek<1)activeWeek=1;
+  if(activeWeek>WEEK_TOTAL)activeWeek=WEEK_TOTAL;
+  updateWeekDisplay();buildGrid();
+};
+window.setWeek=function(w){
+  activeWeek=w;
+  updateWeekDisplay();buildGrid();
+  document.getElementById('weekPicker').classList.remove('show');
+};
+window.toggleWeekPicker=function(){
+  const wp=document.getElementById('weekPicker');
+  if(wp.classList.contains('show')){wp.classList.remove('show');return;}
+  const grid=document.getElementById('weekGrid');
+  grid.innerHTML='';
+  for(let i=1;i<=WEEK_TOTAL;i++){
+    grid.innerHTML+=`<button class="wk-btn${i===activeWeek?' current':''}" onclick="setWeek(${i})">${i}</button>`;
+  }
+  wp.classList.add('show');
+  // Close picker when clicking outside
+  setTimeout(()=>{
+    document.addEventListener('click',function h(e){
+      if(!wp.contains(e.target)&&e.target.id!=='weekNum'){wp.classList.remove('show');document.removeEventListener('click',h);}
+    });
+  },100);
+};
+function updateWeekDisplay(){
+  document.getElementById('weekNum').textContent=activeWeek;
+}
+document.getElementById('weekNum').addEventListener('click',function(e){e.stopPropagation();});
+
+function getDateStr(off){const d=new Date(2026,4,18);d.setDate(d.getDate()+(activeWeek-1)*7+off);return d.getDate();}
+function isToday(off){const d=new Date(2026,4,18);d.setDate(d.getDate()+(activeWeek-1)*7+off);return new Date().toDateString()===d.toDateString();}
+
+function buildWeekHeader(){
+  const wh=document.getElementById('weekHeader');let h='<div class="spacer"></div>';
+  for(let i=0;i<7;i++){const dt=getDateStr(i),today=isToday(i),sel=i===activeDay;if(today)activeDay=i;h+=`<div class="day-col${sel?' active':''}" data-day="${i}"><span class="dname">${DAYS[i]}</span><span class="ddate">${dt}</span></div>`;}
+  wh.innerHTML=h;wh.querySelectorAll('.day-col').forEach(el=>{el.addEventListener('click',function(){activeDay=parseInt(this.dataset.day);buildWeekHeader();buildGrid();});});
+}
+
+function getEndTime(to){if(to>=9)return'20:15';const p=PERIODS[to];if(!p)return'??:??';const[h,m]=p.t.split(':').map(Number),t=(h*60+m+45)%(24*60);return`${String(Math.floor(t/60)).padStart(2,'0')}:${String(t%60).padStart(2,'0')}`;}
+
+function buildGrid(){
+  const gi=document.getElementById('gridInner');
+  let h='<div class="time-labels">';PERIODS.forEach((p,i)=>{const isLast=i===PERIODS.length-1;h+=`<div class="time-label"><span class="ptime-start top">${p.t}</span>${isLast?`<span class="ptime-end bottom">${p.e}</span>`:''}</div>`;});
+  h+='</div><div class="grid-area">';
+  for(let i=0;i<=10;i++)h+=`<div class="sep-h" style="top:${i*PERIOD_H}px"></div>`;
+  for(let i=0;i<=7;i++)h+=`<div class="sep-v" style="left:${i*50}px"></div>`;
+  h+=`<div class="now-line" style="top:116px"><div class="now-dot"></div></div>`;
+  // 动态计算所有空白格：每个 (day, period) 只要该周期没课，就生成可编辑空位
+  for(let day=0;day<7;day++){
+    for(let per=0;per<PERIODS.length;per++){
+      let occupied=false;
+      for(const c of courses){
+        if(!isWeekActive(c,activeWeek))continue;
+        if(c.day===day&&c.from<=per+1&&c.to>=per+1){occupied=true;break;}
+      }
+      if(occupied)continue;
+      h+=`<div class="empty-slot" style="left:${COL_X[day]}px;top:${per*PERIOD_H+1}px" data-day="${day}" data-per="${per}"><svg width="14" height="14" viewBox="0 0 14 14"><path d="M7 3v8M3 7h8" stroke="#B0B0B0" stroke-width="1.3" stroke-linecap="round" fill="none"/></svg></div>`;
+    }
+  }
+  // Courses filtered by active week
+  courses.forEach((c,i)=>{
+    if(!isWeekActive(c,activeWeek))return;
+    const y=(c.from-1)*PERIOD_H+1,ht=(c.to-c.from+1)*PERIOD_H-2,x=COL_X[c.day],bg=COLORS[c.colorIdx||0];
+    h+=`<div class="course-block${c.shattered?' shattered':''}" data-idx="c${i}" style="left:${x}px;top:${y}px;height:${ht}px;background:${c.shattered?bg+'80':bg}"><span class="cname">${c.name}</span>${c.loc?`<span class="cloc">${c.loc}</span>`:''}<span class="cloc">${c.campus||''}</span></div>`;
+  });
+  customEvents.forEach((e,i)=>{
+    const y=(e.from-1)*PERIOD_H+1,ht=(e.to-e.from+1)*PERIOD_H-2,x=COL_X[e.day],bg=COLORS[e.colorIdx||0];
+    h+=`<div class="course-block${e.shattered?' shattered':''}" data-idx="e${i}" style="left:${x}px;top:${y}px;height:${ht}px;background:${e.shattered?bg+'80':bg}"><span class="cname">${e.name}</span>${e.loc?`<span class="cloc">${e.loc}</span>`:''}<span class="cloc">${e.campus||''}</span></div>`;
+  });
+  h+='</div>';gi.innerHTML=h;
+  gi.querySelectorAll('.course-block').forEach(el=>{el.addEventListener('click',function(e){e.stopPropagation();const t=this.dataset.idx,i=parseInt(t.substring(1));openCourseDetail((t[0]==='e'?customEvents:courses)[i],t[0]==='e',i);});});
+  gi.querySelectorAll('.empty-slot').forEach(el=>{el.addEventListener('click',function(e){e.stopPropagation();openAddEvent(parseInt(this.dataset.day),parseInt(this.dataset.per));});});
+  document.getElementById('customCount').textContent=customEvents.length;
+  updateBackToTodayBtn();
+  const cc=document.getElementById('courseCount');if(cc)cc.textContent='课'+(courses.length+customEvents.length);
+}
+
+function openCourseDetail(c,isCustom,idx){currentCourse={obj:c,isCustom,idx};document.getElementById('modalTitle').textContent=c.name;document.getElementById('modalTime').textContent=`周${DAYS[c.day]} ${PERIODS[c.from-1].t} - ${getEndTime(c.to)} (第${c.from}-${c.to}节)`;document.getElementById('modalLoc').textContent=[c.loc,c.campus].filter(Boolean).join(' · ')||'雅安校区';const cr=document.getElementById('colorRow');cr.innerHTML='';COLORS.forEach((col,i)=>{const d=document.createElement('div');d.className='color-dot'+(i===c.colorIdx?' selected':'');d.style.background=col;d.title=COLOR_NAMES[i];d.addEventListener('click',()=>changeCourseColor(i));cr.appendChild(d);});const ar=document.getElementById('actionRow');ar.innerHTML='';const btn=document.createElement('button');if(c.shattered){btn.className='action-btn restore';btn.textContent='🔄 恢复';btn.addEventListener('click',restoreCourse);}else{btn.className='action-btn shatter';btn.textContent='💥 粉碎';btn.addEventListener('click',shatterCourse);}ar.appendChild(btn);document.getElementById('courseModal').classList.add('show');}
+
+window.closeModal=function(e){if(e.target===e.currentTarget)closeModalDirect();};
+window.closeModalDirect=function(){document.getElementById('courseModal').classList.remove('show');};
+function changeCourseColor(i){const c=currentCourse;if(c.isCustom)customEvents[c.idx].colorIdx=i;else courses[c.idx].colorIdx=i;closeModalDirect();buildGrid();}
+function shatterCourse(){const c=currentCourse;if(c.isCustom)customEvents[c.idx].shattered=true;else courses[c.idx].shattered=true;closeModalDirect();buildGrid();}
+function restoreCourse(){const c=currentCourse;if(c.isCustom)customEvents[c.idx].shattered=false;else courses[c.idx].shattered=false;closeModalDirect();buildGrid();}
+
+window.openAddEvent=function(day,per){addDay=day;addPer=per;document.getElementById('addEventInfo').textContent=`周${DAYS[day]} 第${per+1}节 ${PERIODS[per].t}`;document.getElementById('addEventName').value='';document.getElementById('addEventLoc').value='';document.getElementById('addEventModal').classList.add('show');setTimeout(()=>document.getElementById('addEventName').focus(),300);};
+window.showAddEventPrompt=function(){openAddEvent(activeDay,Math.floor(Math.random()*9));};
+window.closeAddModal=function(e){if(e.target===e.currentTarget)document.getElementById('addEventModal').classList.remove('show');};
+window.confirmAddEvent=function(){const n=document.getElementById('addEventName').value.trim();if(!n){alert('请输入事件名称');return;}customEvents.push({id:nextId++,name:n,day:addDay,from:addPer+1,to:addPer+1,loc:document.getElementById('addEventLoc').value.trim(),campus:'自定义',colorIdx:0,shattered:false});document.getElementById('addEventModal').classList.remove('show');buildGrid();};
+
+// ===== QUICK ADD COURSE =====
+window.openQuickAddCourse=function(){document.getElementById('quickAddCourseModal').classList.add('show');};
+window.closeQuickAdd=function(e){if(e.target===e.currentTarget)document.getElementById('quickAddCourseModal').classList.remove('show');};
+window.confirmQuickAdd=function(){
+  const name=document.getElementById('qcName').value.trim();if(!name){alert('请输入课程名称');return;}
+  const day=parseInt(document.getElementById('qcDay').value),from=parseInt(document.getElementById('qcFrom').value),to=parseInt(document.getElementById('qcTo').value);
+  if(from>to){alert('结束节不能早于起始节');return;}
+  courses.push({id:nextId++,name,day,from,to,loc:document.getElementById('qcLoc').value.trim(),campus:document.getElementById('qcCampus').value.trim()||'雅安校区',colorIdx:Math.floor(Math.random()*4),shattered:false});
+  document.getElementById('quickAddCourseModal').classList.remove('show');buildGrid();
+  alert(`已添加: ${name} 周${DAYS[day]} 第${from}-${to}节`);
+};
+
+// ===== IMPORT MODAL =====
+window.openImportModal=function(){document.getElementById('importModal').classList.add('show');};
+window.closeImport=function(e){if(e.target===e.currentTarget)closeImportDirect();};
+window.closeImportDirect=function(){document.getElementById('importModal').classList.remove('show');};
+// ===== OCR IMPORT =====
+window.handleImageUpload=async function(e){
+  const file=e.target.files[0];if(!file)return;
+  const status=document.getElementById('ocrStatus');
+  const preview=document.getElementById('ocrPreview');
+  preview.style.display='block';
+  preview.innerHTML='<img src="'+URL.createObjectURL(file)+'" style="max-width:100%;max-height:150px;border-radius:6px">';
+  status.style.display='block';
+  status.textContent='🔍 正在识别图片...首次加载约需10秒...';
+  try{
+    const result=await Tesseract.recognize(file,'chi_sim+eng',{logger:m=>{if(m.status==='recognizing text')status.textContent='🔍 识别中... '+Math.round(m.progress*100)+'%';}});
+    const text=result.data.text;
+    status.textContent='✅ 识别完成，正在解析课表...';
+    parseOcrText(text);
+  }catch(err){
+    status.textContent='❌ 识别失败: '+err.message+'(请检查网络)';
+  }
+};
+
+function parseOcrText(text){
+  if(!text){document.getElementById('ocrStatus').textContent='⚠️ 未识别到任何文字';return;}
+  document.getElementById('ocrStatus').innerHTML='⚠️ 自动解析较复杂，建议识别后手动复制/校对<br>识别到的文字已显示在上方';
+  // 显示原始文字供用户手动复制
+  const preview=document.getElementById('ocrPreview');
+  preview.innerHTML='<pre style="font-size:10px;background:#F7F8FC;padding:8px;border-radius:6px;max-height:120px;overflow:auto;white-space:pre-wrap;word-break:break-all">'+text+'</pre>';
+}
+
+window.fillDemoImport=function(){document.getElementById('importText').value='遗传学, 1, 5, 6, 10-A303, 雅安, 1, 14, 双周\n发酵工程原理, 1, 7, 8, 10-A303, 雅安, 1, 14, 单周\n分子生物学A, 1, 9, 9, 10-A417, 雅安, 1, 16, 单周\n遗传学实验, 2, 1, 4, 12-203, 雅安, 3, 8\n免疫分析技术, 2, 5, 6, 10-A208, 雅安, 1, 8\n基础生态学, 5, 1, 2, 12-203, 雅安, 1, 16\n细胞工程, 5, 5, 6, 10-A103, 雅安, 1, 14';};
+window.confirmImport=function(){
+  const text=document.getElementById('importText').value.trim();if(!text){alert('请粘贴课表数据');return;}
+  const lines=text.split('\n');let added=0;
+  for(const line of lines){
+    const trimmed=line.trim();if(!trimmed)continue;
+    const parts=trimmed.split(',').map(s=>s.trim());
+    if(parts.length<4){alert(`格式错误: ${trimmed}\n需要至少: 课程名, 星期, 起始节, 结束节`);continue;}
+    const name=parts[0],day=parseInt(parts[1])-1,from=parseInt(parts[2]),to=parseInt(parts[3]);
+    if(day<0||day>6||from<1||from>9||to<1||to>9||from>to){alert(`参数超出范围: ${trimmed}`);continue;}
+    const loc=parts[4]||'',campus=parts[5]||'雅安',ws=parseInt(parts[6])||1,we=parseInt(parts[7])||16,oe=(parts[8]||'').includes('单')?'odd':(parts[8]||'').includes('双')?'even':null;
+    courses.push({id:nextId++,name,day,from,to,loc,campus,colorIdx:Math.floor(Math.random()*4),shattered:false,wkStart:ws,wkEnd:we,oddOnly:oe==='odd',evenOnly:oe==='even'});
+    added++;
+  }
+  closeImportDirect();buildGrid();
+  if(added>0)alert(`成功导入 ${added} 门课程！`);
+};
+window.addRandomCourse=function(){const d=Math.floor(Math.random()*7),f=Math.floor(Math.random()*7)+1,t=Math.min(f+[1,2,2,3,4][Math.floor(Math.random()*5)]-1,9),n=['高等数学','大学英语','线性代数','概率论','大学物理','C语言','Java程序设计','操作系统','计算机网络'];courses.push({id:nextId++,name:n[Math.floor(Math.random()*n.length)],day:d,from:f,to:t,loc:['A教301','B教205','C教102','D教410','E教508'][Math.floor(Math.random()*5)],campus:'雅安校区',colorIdx:Math.floor(Math.random()*4),shattered:false});buildGrid();};
+window.resetAllCourses=function(){if(confirm('确定要重置课表吗？所有修改和添加将被清空。')){courses=JSON.parse(JSON.stringify(DEFAULT_COURSES));customEvents=[];buildWeekHeader();buildGrid();alert('课表已重置');}};
+window.showSettings=function(show){document.getElementById('settingsPage').classList.toggle('show',show);document.getElementById('tabSchedule').classList.toggle('active',!show);document.getElementById('tabSettings').classList.toggle('active',show);};
+
+// ===== SWIPE NAVIGATION =====
+(function(){
+let touchStartX=0,touchStartY=0,settingsOpen=false;
+document.getElementById('settingsPage').addEventListener('transitionend',function(){settingsOpen=this.classList.contains('show');});
+document.getElementById('app').addEventListener('touchstart',function(e){touchStartX=e.touches[0].clientX;touchStartY=e.touches[0].clientY;},{passive:true});
+document.getElementById('app').addEventListener('touchend',function(e){
+  const dx=e.changedTouches[0].clientX-touchStartX;
+  const dy=e.changedTouches[0].clientY-touchStartY;
+  if(Math.abs(dx)<50||Math.abs(dy)>Math.abs(dx))return;
+  if(dx<-50&&!settingsOpen)showSettings(true);
+  else if(dx>50&&settingsOpen)showSettings(false);
+},{passive:true});
+})();
+window.scrollToNow=function(){
+  activeWeek=CURRENT_WEEK;
+  updateWeekDisplay();
+  buildGrid();
+  document.getElementById('timeGrid').scrollTo({top:80,behavior:'smooth'});
+};
+function updateBackToTodayBtn(){
+  const btn=document.querySelector('.back-today');
+  if(!btn)return;
+  btn.style.display=activeWeek===CURRENT_WEEK?'none':'flex';
+}
+
+try{updateWeekDisplay();buildWeekHeader();buildGrid();document.getElementById('timeGrid').scrollTop=80;updateBackToTodayBtn();}catch(e){document.body.innerHTML+='<div style="position:fixed;top:0;left:0;right:0;background:red;color:white;padding:20px;z-index:9999;font-family:monospace">JS错误: '+(e.message||e)+'</div>';}
+})();
+</script>
+</body>
+</html>
