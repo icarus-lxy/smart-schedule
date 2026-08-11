@@ -7,6 +7,8 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    env:
+      ANDROID_SDK_ROOT: ${{ steps.setup-android.outputs.ANDROID_SDK_ROOT }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -16,14 +18,16 @@ jobs:
         with:
           distribution: 'temurin'
           java-version: '17'
-      - uses: android-actions/setup-android@v3
+      - id: setup-android
+        uses: android-actions/setup-android@v3
         with:
           packages: 'platforms;android-34 build-tools;34.0.0'
-      - run: npm install --save-dev @capacitor/cli@^5 @capacitor/core@^5 @capacitor/android@^5
+      - run: npm install
       - run: npx cap add android
-      - run: npx cap sync android
-      - run: cd android && ./gradlew assembleDebug --no-daemon
+      - run: npx cap sync
+      - run: cd android && chmod +x gradlew && ./gradlew assembleDebug --no-daemon
       - uses: actions/upload-artifact@v4
         with:
           name: app-debug
           path: android/app/build/outputs/apk/debug/app-debug.apk
+
