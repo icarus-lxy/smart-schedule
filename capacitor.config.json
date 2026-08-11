@@ -1,0 +1,9 @@
+{
+  "appId": "com.smartschedule.app",
+  "appName": "智能课表",
+  "webDir": ".",
+  "bundledWebRuntime": false,
+  "android": {
+    "allowMixedContent": true
+  }
+}
