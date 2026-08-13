@@ -19,6 +19,20 @@ jobs:
       - uses: android-actions/setup-android@v3
         with:
           packages: 'platforms;android-34 build-tools;34.0.0'
+      - run: |
+          mkdir -p www
+          cp index.html manifest.json sw.js icon-192.png icon-512.png www/
+      - run: |
+          cat > capacitor.config.json << 'EOF'
+          {
+            "appId": "com.smartschedule.app",
+            "appName": "智能课表",
+            "webDir": "www",
+            "android": {
+              "allowMixedContent": true
+            }
+          }
+          EOF
       - run: npm install
       - run: npx cap add android
       - run: npx cap sync
