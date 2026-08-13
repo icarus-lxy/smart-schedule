@@ -1,11 +1,16 @@
 {
   "name": "smart-schedule",
   "version": "1.0.0",
-  "description": "智能课表",
+  "description": "智能课表 - 大学生周课表管理 PWA",
   "private": true,
-  "dependencies": {
-    "@capacitor/android": "^5.0.0",
-    "@capacitor/cli": "^5.0.0",
-    "@capacitor/core": "^5.0.0"
+  "scripts": {
+    "cap:add": "npx cap add android",
+    "cap:sync": "npx cap sync",
+    "cap:open": "npx cap open android"
+  },
+  "devDependencies": {
+    "@capacitor/android": "^6.2.1",
+    "@capacitor/cli": "^6.2.1",
+    "@capacitor/core": "^6.2.1"
   }
 }
